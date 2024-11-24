@@ -1,0 +1,25 @@
+@baseUrl= https://weva.live/api/v3
+
+# Section
+GET {{baseUrl}}/section
+Requestlocale: ar
+
+# Centers - stores {id}
+GET {{baseUrl}}/home/2
+
+# Salon - stores {id}
+GET {{baseUrl}}/home/9
+
+# Fitness Gym - stores {id}
+GET {{baseUrl}}/home/3
+
+# Specific Center
+GET {{baseUrl}}/center/6
+Requestlocale: ar
+
+# Service POST
+POST {{baseUrl}}/center/6/service/25
+
+https://weva.live/api/v3/section
+
+curl -X GET https://weva.live/api/v3/section -H "RequestLocal: ar"

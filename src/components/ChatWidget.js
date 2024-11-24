@@ -3,8 +3,11 @@ import React, { useState, useEffect } from "react";
 import { FaRegUserCircle } from "react-icons/fa";
 import { IoChevronDownOutline } from "react-icons/io5";
 import { SiChatbot } from "react-icons/si";
+import apiService from "@/services/apiService";
+import Image from "next/image";
 
 function ChatWidget() {
+  const [locale, setLocale] = useState("en");
   const [isOpen, setIsOpen] = useState(false);
   const [categories, setCategories] = useState([]);
   const [messages, setMessages] = useState([]);
@@ -12,33 +15,40 @@ function ChatWidget() {
   const [showCategories, setShowCategories] = useState(true);
   const [selectedCenter, setSelectedCenter] = useState(null);
 
-  // Fetch categories when the chatbox is opened
   useEffect(() => {
     if (isOpen && messages.length === 0) {
-      setIsTyping(true);
-      fetchCategories();
-    } else if (isOpen) {
-      setShowCategories(true); // Ensure categories show up again when reopening
+      setMessages([
+        {
+          role: "assistant",
+          type: "greeting",
+        },
+      ]);
     }
-  }, [isOpen]);
+  }, [isOpen, locale]);
 
-  // Fetch categories from the API
-  const fetchCategories = async () => {
+  const handleLanguageSelection = (language) => {
+    setMessages((prevMessages) => [
+      ...prevMessages,
+      {
+        role: "user",
+        content: language === "en" ? "English" : "Arabic",
+      },
+      {
+        role: "assistant",
+        type: "categoryPrompt",
+      },
+    ]);
+    setLocale(language);
+    fetchCategories(language);
+  };
+
+  const fetchCategories = async (language) => {
     try {
-      const response = await fetch("https://weva.live/api/v3/section");
-      const data = await response.json();
+      const data = await apiService.fetchCategories(language);
       setCategories(
         data.map((category) => ({ id: category.id, name: category.name }))
       );
-      setMessages((prevMessages) => [
-        ...prevMessages,
-        {
-          role: "assistant",
-          content: "Hi, Please choose a category.",
-        },
-      ]);
     } catch (error) {
-      console.error("Error fetching categories:", error);
       setMessages((prevMessages) => [
         ...prevMessages,
         {
@@ -48,10 +58,10 @@ function ChatWidget() {
       ]);
     } finally {
       setIsTyping(false);
+      setShowCategories(true);
     }
   };
 
-  // Handle category click
   const handleCategoryClick = async (categoryId, categoryName) => {
     setMessages((prevMessages) => [
       ...prevMessages,
@@ -61,24 +71,29 @@ function ChatWidget() {
     setIsTyping(true);
 
     try {
-      const response = await fetch(
-        `https://weva.live/api/v3/home/${categoryId}`
-      );
-      const data = await response.json();
-      const stores = data.stores.slice(0, 5).map((store) => ({
-        id: store.id,
-        name: store.name,
-        image: store.image,
-        rating: store.review?.ratinng || 0,
-        count: store.review?.count || 0,
-      }));
+      const data = await apiService.fetchCategoryData(categoryId, locale);
 
+      // Process store data
+      const stores = Array.isArray(data.stores)
+        ? data.stores.slice(0, 5).map((store) => ({
+            id: store.id,
+            name: store.name,
+            image: store.image,
+            rating: store.review?.rating || 0,
+            count: store.review?.count || 0,
+          }))
+        : []; // Default to an empty array if undefined
+
+      // Add raw stores data to messages
       setMessages((prevMessages) => [
         ...prevMessages,
-        { role: "assistant", content: stores, type: "stores" },
+        {
+          role: "assistant",
+          type: "stores",
+          stores: stores,
+        },
       ]);
     } catch (error) {
-      console.error("Error fetching category data:", error);
       setMessages((prevMessages) => [
         ...prevMessages,
         { role: "assistant", content: "Failed to fetch data." },
@@ -88,7 +103,6 @@ function ChatWidget() {
     }
   };
 
-  // Handle center click
   const handleCenterClick = async (storeId, centerName) => {
     setMessages((prevMessages) => [
       ...prevMessages,
@@ -98,20 +112,21 @@ function ChatWidget() {
     setIsTyping(true);
 
     try {
-      const response = await fetch(`https://weva.live/api/v3/center/${storeId}`);
-      const data = await response.json();
-      const departments = data.departments.map((department) => ({
-        id: department.id,
-        name: department.name,
-        image: department.image,
-      }));
+      const data = await apiService.fetchCenterData(storeId, locale);
 
+      // Check if data.departments is defined and is an array
+      const departments = Array.isArray(data.departments)
+        ? data.departments.map((department) => ({
+            id: department.id,
+            name: department.name,
+            image: department.image,
+          }))
+        : [];
       setMessages((prevMessages) => [
         ...prevMessages,
         { role: "assistant", content: departments, type: "departments" },
       ]);
     } catch (error) {
-      console.error("Error fetching center data:", error);
       setMessages((prevMessages) => [
         ...prevMessages,
         { role: "assistant", content: "Failed to fetch departments." },
@@ -121,7 +136,6 @@ function ChatWidget() {
     }
   };
 
-  // Handle department click
   const handleDepartmentClick = async (departmentId, departmentName) => {
     setMessages((prevMessages) => [
       ...prevMessages,
@@ -130,27 +144,32 @@ function ChatWidget() {
     setIsTyping(true);
 
     try {
-      const response = await fetch(
-        `https://weva.live/api/v3/center/${selectedCenter}`
+      const services = await apiService.fetchServicesForDepartment(
+        selectedCenter,
+        departmentId,
+        locale
       );
-      const data = await response.json();
-      const services = data.services
-        .filter((service) => service.department_ids.includes(departmentId))
-        .slice(0, 5)
-        .map((service) => ({
-          id: service.id,
-          name: service.name,
-          image: service.image,
-          price: service.price,
-          duration: service.duration,
-        }));
 
+      // Process services to extract relevant information
+      const servicesList = Array.isArray(services)
+        ? services.map((service) => ({
+            id: service.id,
+            name: service.name,
+            price: service.price,
+            image: service.image,
+          }))
+        : []; // Fallback to an empty array if services is not an array
+
+      // Add services to messages for display
       setMessages((prevMessages) => [
         ...prevMessages,
-        { role: "assistant", content: services, type: "services" },
+        {
+          role: "assistant",
+          type: "services",
+          services: servicesList, // Pass services list directly here
+        },
       ]);
     } catch (error) {
-      console.error("Error fetching services:", error);
       setMessages((prevMessages) => [
         ...prevMessages,
         { role: "assistant", content: "Failed to fetch services." },
@@ -160,115 +179,293 @@ function ChatWidget() {
     }
   };
 
-  // Handle service click
   const handleServiceClick = (serviceId) => {
     window.open(`https://weva.live/en/service/${serviceId}`, "_blank");
   };
 
-  // Handle final question
   const handleFinalQuestion = (answer) => {
     if (answer === "Yes") {
-      setMessages([]);
       setShowCategories(true);
-      fetchCategories();
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        {
+          role: "assistant",
+          type: "categoryPrompt",
+        },
+      ]);
     } else {
       setMessages([]);
       setIsOpen(false);
-      setShowCategories(true);
+      setShowCategories(false);
     }
+  };
+
+  const switchCategory = () => {
+    setShowCategories(true);
+    setMessages((prevMessages) => [
+      ...prevMessages,
+      {
+        role: "assistant",
+        type: "categoryPrompt",
+      },
+    ]);
   };
 
   return (
     <div className="fixed bottom-5 right-5">
+      {/* Chat box opening */}
       {!isOpen ? (
         <div
-          className="relative w-16 h-16 bg-white rounded-full shadow-lg cursor-pointer flex items-center justify-center"
+          className="relative w-16 h-16 bg-white rounded-full shadow-lg cursor-pointer flex items-center justify-center hover:rotate-12 transition"
           onClick={() => setIsOpen(true)}
         >
-          <SiChatbot className="text-indigo-600 hover:rotate-12 transition" size={40} />
+          <Image
+            src="/images/logo-red.png"
+            height={50}
+            width={50}
+            alt="Weva Logo"
+          />
+          <div className="absolute bg-green-500 w-3 h-3 rounded-full top-1 left-1"></div>
         </div>
       ) : (
         <div
           className="relative w-16 h-16 bg-white rounded-full shadow-lg cursor-pointer flex items-center justify-center"
           onClick={() => setIsOpen(false)}
         >
-          <IoChevronDownOutline className="text-indigo-600" size={40} />
+          <IoChevronDownOutline className="text-red-400" size={40} />
         </div>
       )}
 
       {isOpen && (
         <div className="min-w-96 min-h-[450px] bg-white shadow-xl rounded-lg absolute bottom-20 left-[calc(100%-26rem)]">
-          <div className="flex items-center gap-2 bg-indigo-600 p-2 mb-4 rounded-t-lg">
-            <SiChatbot className="text-white" size={30} />
+          <div className="flex items-center gap-2 bg-red-400 p-2 mb-4 rounded-t-lg">
+            <Image
+              src="/images/logo-white.png"
+              height={40}
+              width={40}
+              alt="Weva Logo"
+            />
+
             <div>
               <h3 className="text-md font-semibold text-white">
                 Weva Assistant
               </h3>
               <p className="text-xs font-normal text-white">
-                Helps to book faster
+                {locale === "en"
+                  ? "Helps to book faster"
+                  : "يساعد على الحجز بشكل أسرع"}
               </p>
             </div>
           </div>
 
+          {/* Conversation flow */}
           <div className="p-4 overflow-y-auto max-h-80">
             {messages.map((msg, idx) => (
               <div
                 key={idx}
                 className={`flex items-start mb-4 ${
-                  msg.role === "user" ? "justify-start" : "justify-end"
+                  msg.role === "user" ? "justify-end" : "justify-start"
                 }`}
               >
                 {msg.role === "user" ? (
                   <div className="flex items-center mb-4 justify-start">
-                    <FaRegUserCircle className="text-gray-600" size={30} />
-                    <div className="ml-2 max-w-xs bg-indigo-600 text-white text-sm font-normal px-4 py-1 rounded">
+                    <div className="mr-2 max-w-xs bg-red-400 text-white text-sm font-normal px-4 py-1 rounded">
                       {msg.content}
                     </div>
+                    <FaRegUserCircle className="text-gray-600" size={30} />
                   </div>
                 ) : (
-                  <div className="flex gap-2">
+                  <div className="flex items-start gap-2">
+                    <SiChatbot className="text-red-400" size={30} />
                     <div className="max-w-xs bg-gray-100 text-sm font-normal text-gray-900 p-2 rounded">
-                      {msg.type === "stores" ||
-                      msg.type === "departments" ||
-                      msg.type === "services" ? (
-                        <div className="space-y-2">
-                          {msg.content.map((item) => (
-                            <div
-                              key={item.id}
-                              className="flex items-center p-2 bg-white shadow rounded-lg cursor-pointer"
-                              onClick={() =>
-                                msg.type === "stores"
-                                  ? handleCenterClick(item.id, item.name)
-                                  : msg.type === "departments"
-                                  ? handleDepartmentClick(item.id, item.name)
-                                  : handleServiceClick(item.id)
-                              }
+                      {msg.type === "greeting" ? (
+                        <div className="space-y-2 text-left">
+                          <p>
+                            {locale === "en"
+                              ? "Hi, I am Ryan! I am designed to make your booking faster. Please choose a language to continue..."
+                              : "مرحبًا، أنا مساعد Weva. أنا مصمم لجعل الحجز الخاص بك أسرع. يرجى اختيار لغة للمتابعة..."}
+                          </p>
+                          <div className="flex justify-center space-x-2">
+                            <button
+                              className="text-sm bg-red-400 text-white font-normal px-2 py-1 rounded"
+                              onClick={() => handleLanguageSelection("en")}
                             >
-                              <img
-                                src={item.image}
-                                alt={item.name}
-                                className="w-12 h-12 rounded-full object-cover"
-                              />
-                              <div className="ml-3">
-                                <h4 className="font-medium">{item.name}</h4>
-                                {item.price && (
-                                  <p className="text-sm text-gray-500">
-                                    {item.price} | {item.duration}
-                                  </p>
-                                )}
+                              English
+                            </button>
+                            <button
+                              className="text-sm bg-red-400 text-white font-normal px-2 py-1 rounded"
+                              onClick={() => handleLanguageSelection("ar")}
+                            >
+                              Arabic
+                            </button>
+                          </div>
+                        </div>
+                      ) : msg.type === "categoryPrompt" ? (
+                        <div className="text-left">
+                          {locale === "en"
+                            ? "Please choose a category"
+                            : "الرجاء اختيار فئة"}
+                        </div>
+                      ) : msg.type === "stores" ? (
+                        <div>
+                          <p className="mb-2">
+                            {locale === "en"
+                              ? "Please choose a center"
+                              : "الرجاء اختيار المركز"}
+                          </p>
+                          {Array.isArray(msg.stores) &&
+                          msg.stores.length > 0 ? (
+                            msg.stores.map((store) => (
+                              <div
+                                key={store.id}
+                                className="bg-white rounded shadow p-4 mb-2 cursor-pointer"
+                                onClick={() =>
+                                  handleCenterClick(store.id, store.name)
+                                }
+                              >
+                                <div className="flex items-center">
+                                  <img
+                                    src={store.image}
+                                    alt={store.name}
+                                    className="w-10 h-10 rounded"
+                                  />
+                                  <div className="ml-2">
+                                    <p className="font-semibold">
+                                      {store.name}
+                                    </p>
+                                    <p className="text-sm text-gray-600">
+                                      {store.rating > 0 ? (
+                                        Array.from(
+                                          { length: store.rating },
+                                          (_, index) => (
+                                            <span
+                                              key={index}
+                                              className="text-red-400"
+                                            >
+                                              ★
+                                            </span>
+                                          )
+                                        )
+                                      ) : (
+                                        <p>
+                                          {locale === "en"
+                                            ? "Not rated yet"
+                                            : "لم يتم تقييمه بعد"}
+                                        </p>
+                                      )}
+                                    </p>
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            ))
+                          ) : (
+                            <p>
+                              {locale === "en"
+                                ? "No center available"
+                                : "لا يوجد مركز متاح"}
+                            </p>
+                          )}
+                          <div className="flex justify-center">
+                            {" "}
+                            <button 
+                            className="bg-red-400 rounded px-2 py-1 text-white"
+                            onClick={() => switchCategory()}
+                            >
+                              {locale ==="en" ? "Change Category" : "تغيير الفئة"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : msg.type === "departments" ? (
+                        <div>
+                          <p className="mb-2">
+                            {locale === "en"
+                              ? "Please choose a department"
+                              : "الرجاء اختيار القسم"}
+                          </p>
+                          {Array.isArray(msg.content) &&
+                          msg.content.length > 0 ? (
+                            msg.content.map((department) => (
+                              <div
+                                key={department.id}
+                                className="flex items-center p-2 bg-white shadow rounded-lg cursor-pointer mb-2"
+                                onClick={() =>
+                                  handleDepartmentClick(
+                                    department.id,
+                                    department.name
+                                  )
+                                }
+                              >
+                                <img
+                                  src={department.image}
+                                  alt={department.name}
+                                  className="w-12 h-12 rounded-full object-cover"
+                                />
+                                <div className="ml-3">
+                                  <h4 className="font-medium">
+                                    {department.name}
+                                  </h4>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <p>
+                              {locale === "en"
+                                ? "No departments available"
+                                : "لا توجد أقسام متاحة"}
+                            </p>
+                          )}
+                        </div>
+                      ) : msg.type === "services" ? (
+                        <div>
+                          <p className="mb-2">
+                            {" "}
+                            {locale === "en"
+                              ? "Please choose a service"
+                              : "الرجاء اختيار الخدمة"}
+                          </p>
+                          {Array.isArray(msg.services) &&
+                          msg.services.length > 0 ? (
+                            msg.services.map((service) => (
+                              <div
+                                key={service.id}
+                                className="bg-white rounded shadow p-4 mb-2 cursor-pointer"
+                                onClick={() => handleServiceClick(service.id)}
+                              >
+                                <div className="flex items-center">
+                                  <img
+                                    src={service.image}
+                                    alt={service.name}
+                                    className="w-10 h-10 rounded"
+                                  />
+                                  <div className="ml-2">
+                                    <p className="font-semibold">
+                                      {service.name}
+                                    </p>
+                                    <p className="text-sm text-gray-600">
+                                      {service.price}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <p>
+                              {locale === "en"
+                                ? "No services available"
+                                : "لا توجد خدمات متاحة"}
+                            </p>
+                          )}
                         </div>
                       ) : (
                         msg.content
                       )}
                     </div>
-                    <SiChatbot className="text-indigo-600" size={30} />
                   </div>
                 )}
               </div>
             ))}
+
+            {/* Typing indicator */}
             {isTyping && (
               <div className="flex justify-center mb-4">
                 <div className="max-w-xs text-sm text-gray-900 p-2">
@@ -276,12 +473,14 @@ function ChatWidget() {
                 </div>
               </div>
             )}
-            {showCategories && categories.length > 0 && (
-              <div className="grid grid-cols-3 gap-3">
+
+            {/* Display categories after language selection */}
+            {showCategories && categories.length > 0 && locale && (
+              <div className="flex flex-col gap-2 flex-start max-w-44 bg-gray-100 rounded  p-2 ml-10">
                 {categories.map((category) => (
                   <button
                     key={category.id}
-                    className="text-xs text-gray-800 font-normal border border-gray-800 px-2 py-1 rounded"
+                    className="text-sm bg-red-400 text-white font-normal px-2 py-1 rounded"
                     onClick={() =>
                       handleCategoryClick(category.id, category.name)
                     }
@@ -291,33 +490,39 @@ function ChatWidget() {
                 ))}
               </div>
             )}
+
+            {/* Final question buttons */}
             {!showCategories &&
               messages.find((msg) => msg.type === "services") && (
-                <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-2">
                   <button
-                    className="text-sm text-gray-800 font-normal border border-gray-800 px-2 py-1 rounded"
+                    className="text-sm bg-red-400 text-white font-normal px-2 py-1 rounded"
                     onClick={() => handleFinalQuestion("Yes")}
                   >
-                    Yes
+                    Book More
                   </button>
                   <button
-                    className="text-sm text-gray-800 font-normal border border-gray-800 px-2 py-1 rounded"
+                    className="text-sm bg-red-400 text-white font-normal px-2 py-1 rounded"
                     onClick={() => handleFinalQuestion("No")}
                   >
-                    No
+                    End Chat
                   </button>
                 </div>
               )}
           </div>
+
+          {/* User Input Section */}
           <div className="absolute bg-white bottom-0 left-0 right-0 p-4">
             <div className="flex items-center border border-gray-300 rounded-full">
               <FaRegUserCircle className="text-gray-600 p-1" size={30} />
               <input
                 type="text"
-                placeholder="Type your message..."
+                placeholder={
+                  locale === "en" ? "Type your message here" : "اكتب رسالتك هنا"
+                }
                 className="flex-grow text-black text-sm font-normal p-2 outline-none"
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+                  if (e.key === "Enter") {
                     // Handle sending the message
                     const userMessage = e.target.value;
                     if (userMessage.trim()) {
@@ -325,25 +530,26 @@ function ChatWidget() {
                         ...prevMessages,
                         { role: "user", content: userMessage },
                       ]);
-                      e.target.value = ""; 
+                      e.target.value = "";
                     }
                   }
                 }}
               />
               <button
-                className="bg-indigo-600 text-sm font-normal px-4 py-1 mr-1 text-white p-2 rounded-full"
+                className="bg-red-400 text-sm font-normal px-4 py-1 mr-1 text-white p-2 rounded-full"
                 onClick={() => {
-                  const userMessage = document.querySelector('input[type="text"]').value;
+                  const userMessage =
+                    document.querySelector('input[type="text"]').value;
                   if (userMessage.trim()) {
                     setMessages((prevMessages) => [
                       ...prevMessages,
                       { role: "user", content: userMessage },
                     ]);
-                    document.querySelector('input[type="text"]').value = ""; 
+                    document.querySelector('input[type="text"]').value = "";
                   }
                 }}
               >
-                Send
+                {locale === "en" ? "Send" : "يرسل"}
               </button>
             </div>
           </div>
