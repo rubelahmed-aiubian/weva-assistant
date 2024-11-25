@@ -12,8 +12,8 @@ function ChatWidget() {
   const [categories, setCategories] = useState([]);
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
-  const [showCategories, setShowCategories] = useState(true);
   const [selectedCenter, setSelectedCenter] = useState(null);
+  const [endButton, setEndButton] = useState(false);
 
   useEffect(() => {
     if (isOpen && messages.length === 0) {
@@ -43,6 +43,7 @@ function ChatWidget() {
   };
 
   const fetchCategories = async (language) => {
+    setIsTyping(true);
     try {
       const data = await apiService.fetchCategories(language);
       setCategories(
@@ -58,7 +59,6 @@ function ChatWidget() {
       ]);
     } finally {
       setIsTyping(false);
-      setShowCategories(true);
     }
   };
 
@@ -67,7 +67,6 @@ function ChatWidget() {
       ...prevMessages,
       { role: "user", content: categoryName },
     ]);
-    setShowCategories(false);
     setIsTyping(true);
 
     try {
@@ -176,6 +175,7 @@ function ChatWidget() {
       ]);
     } finally {
       setIsTyping(false);
+      setEndButton(true);
     }
   };
 
@@ -185,7 +185,8 @@ function ChatWidget() {
 
   const handleFinalQuestion = (answer) => {
     if (answer === "Yes") {
-      setShowCategories(true);
+      setEndButton(false);
+      fetchCategories(locale);
       setMessages((prevMessages) => [
         ...prevMessages,
         {
@@ -196,12 +197,12 @@ function ChatWidget() {
     } else {
       setMessages([]);
       setIsOpen(false);
-      setShowCategories(false);
+      setEndButton(false);
     }
   };
 
   const switchCategory = () => {
-    setShowCategories(true);
+    fetchCategories(locale);
     setMessages((prevMessages) => [
       ...prevMessages,
       {
@@ -237,7 +238,7 @@ function ChatWidget() {
       )}
 
       {isOpen && (
-        <div className="min-w-96 min-h-[450px] bg-white shadow-xl rounded-lg absolute bottom-20 left-[calc(100%-26rem)]">
+        <div className="max-w-96 min-h-[450px] bg-white shadow-xl rounded-lg absolute bottom-20 left-[calc(100%-20rem)]">
           <div className="flex items-center gap-2 bg-red-400 p-2 mb-4 rounded-t-lg">
             <Image
               src="/images/logo-white.png"
@@ -272,17 +273,21 @@ function ChatWidget() {
                     <div className="mr-2 max-w-xs bg-red-400 text-white text-sm font-normal px-4 py-1 rounded">
                       {msg.content}
                     </div>
-                    <FaRegUserCircle className="text-gray-600" size={30} />
+                    <div className="w-8">
+                      <FaRegUserCircle className="text-gray-600" size={25} />
+                    </div>
                   </div>
                 ) : (
-                  <div className="flex items-start gap-2">
-                    <SiChatbot className="text-red-400" size={30} />
+                  <div className="flex flex-start gap-2 items-start">
+                    <div className="w-8">
+                      <SiChatbot className="text-red-400" size={25} />
+                    </div>
                     <div className="max-w-xs bg-gray-100 text-sm font-normal text-gray-900 p-2 rounded">
                       {msg.type === "greeting" ? (
                         <div className="space-y-2 text-left">
-                          <p>
+                          <p className="text-sm text-black">
                             {locale === "en"
-                              ? "Hi, I am Ryan! I am designed to make your booking faster. Please choose a language to continue..."
+                              ? "Hi, I am Weva Assistant! I am designed to make your booking faster. Please choose a language to continue..."
                               : "مرحبًا، أنا مساعد Weva. أنا مصمم لجعل الحجز الخاص بك أسرع. يرجى اختيار لغة للمتابعة..."}
                           </p>
                           <div className="flex justify-center space-x-2">
@@ -305,6 +310,27 @@ function ChatWidget() {
                           {locale === "en"
                             ? "Please choose a category"
                             : "الرجاء اختيار فئة"}
+
+                          {Array.isArray(categories) &&
+                            categories.length > 0 &&
+                            locale && (
+                              <div className="flex flex-col gap-2 flex-start max-w-44 bg-gray-100 rounded p-2">
+                                {categories.map((category) => (
+                                  <button
+                                    key={category.id}
+                                    className="text-sm bg-red-400 text-white font-normal px-2 py-1 rounded"
+                                    onClick={() =>
+                                      handleCategoryClick(
+                                        category.id,
+                                        category.name
+                                      )
+                                    }
+                                  >
+                                    {category.name}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                         </div>
                       ) : msg.type === "stores" ? (
                         <div>
@@ -367,11 +393,13 @@ function ChatWidget() {
                           )}
                           <div className="flex justify-center">
                             {" "}
-                            <button 
-                            className="bg-red-400 rounded px-2 py-1 text-white"
-                            onClick={() => switchCategory()}
+                            <button
+                              className="bg-red-400 rounded px-2 py-1 text-white"
+                              onClick={() => switchCategory()}
                             >
-                              {locale ==="en" ? "Change Category" : "تغيير الفئة"}
+                              {locale === "en"
+                                ? "Change Category"
+                                : "تغيير الفئة"}
                             </button>
                           </div>
                         </div>
@@ -467,48 +495,32 @@ function ChatWidget() {
 
             {/* Typing indicator */}
             {isTyping && (
-              <div className="flex justify-center mb-4">
-                <div className="max-w-xs text-sm text-gray-900 p-2">
-                  Please wait...
+              <div className="flex flex-start mb-4 ml-10">
+                <div className="flex space-x-2">
+                  <span className="w-2 h-2 bg-red-400 rounded-full animate-bounce"></span>
+                  <span className="w-2 h-2 bg-red-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                  <span className="w-2 h-2 bg-red-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
                 </div>
-              </div>
-            )}
-
-            {/* Display categories after language selection */}
-            {showCategories && categories.length > 0 && locale && (
-              <div className="flex flex-col gap-2 flex-start max-w-44 bg-gray-100 rounded  p-2 ml-10">
-                {categories.map((category) => (
-                  <button
-                    key={category.id}
-                    className="text-sm bg-red-400 text-white font-normal px-2 py-1 rounded"
-                    onClick={() =>
-                      handleCategoryClick(category.id, category.name)
-                    }
-                  >
-                    {category.name}
-                  </button>
-                ))}
               </div>
             )}
 
             {/* Final question buttons */}
-            {!showCategories &&
-              messages.find((msg) => msg.type === "services") && (
-                <div className="flex flex-col gap-2">
-                  <button
-                    className="text-sm bg-red-400 text-white font-normal px-2 py-1 rounded"
-                    onClick={() => handleFinalQuestion("Yes")}
-                  >
-                    Book More
-                  </button>
-                  <button
-                    className="text-sm bg-red-400 text-white font-normal px-2 py-1 rounded"
-                    onClick={() => handleFinalQuestion("No")}
-                  >
-                    End Chat
-                  </button>
-                </div>
-              )}
+            {endButton && (
+              <div className="flex flex-col gap-2">
+                <button
+                  className="text-sm bg-red-400 text-white font-normal px-2 py-1 rounded"
+                  onClick={() => handleFinalQuestion("Yes")}
+                >
+                  {locale === "en" ? "Book More" : "احجز المزيد"}
+                </button>
+                <button
+                  className="text-sm bg-red-400 text-white font-normal px-2 py-1 rounded"
+                  onClick={() => handleFinalQuestion("No")}
+                >
+                  {locale === "en" ? "End Chat" : "إنهاء الدردشة"}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* User Input Section */}
@@ -521,31 +533,85 @@ function ChatWidget() {
                   locale === "en" ? "Type your message here" : "اكتب رسالتك هنا"
                 }
                 className="flex-grow text-black text-sm font-normal p-2 outline-none"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    // Handle sending the message
-                    const userMessage = e.target.value;
-                    if (userMessage.trim()) {
-                      setMessages((prevMessages) => [
-                        ...prevMessages,
-                        { role: "user", content: userMessage },
-                      ]);
-                      e.target.value = "";
-                    }
-                  }
-                }}
               />
               <button
                 className="bg-red-400 text-sm font-normal px-4 py-1 mr-1 text-white p-2 rounded-full"
                 onClick={() => {
-                  const userMessage =
-                    document.querySelector('input[type="text"]').value;
-                  if (userMessage.trim()) {
+                  const inputField =
+                    document.querySelector('input[type="text"]');
+                  const userMessage = inputField.value.trim();
+                  if (userMessage) {
+                    // Add user message
                     setMessages((prevMessages) => [
                       ...prevMessages,
                       { role: "user", content: userMessage },
                     ]);
-                    document.querySelector('input[type="text"]').value = "";
+
+                    // Handle assistant's response
+                    if (userMessage.toLowerCase() === "hi") {
+                      setMessages((prevMessages) => [
+                        ...prevMessages,
+                        {
+                          role: "assistant",
+                          content: (
+                            <div>
+                              <p className="text-sm">
+                                {locale === "en"
+                                  ? "Hello, There! I am Weva Assistant. Do you need booking assistance?"
+                                  : "أنا مصمم للمساعدة فقط في إجراء الحجز الخاص بك أسرع. هل تريد حجز أي خدمة؟"}
+                              </p>
+                              <div className="flex justify-center gap-2 mt-2">
+                                <button
+                                  className="bg-red-400 rounded px-2 py-1 text-white"
+                                  onClick={() => handleFinalQuestion("Yes")}
+                                >
+                                  {locale === "en" ? "Yes" : "نعم"}
+                                </button>
+                                <button
+                                  className="bg-red-400 rounded px-2 py-1 text-white"
+                                  onClick={() => handleFinalQuestion("No")}
+                                >
+                                  {locale === "en" ? "No" : "لا"}
+                                </button>
+                              </div>
+                            </div>
+                          ),
+                        },
+                      ]);
+                    } else {
+                      setMessages((prevMessages) => [
+                        ...prevMessages,
+                        {
+                          role: "assistant",
+                          content: (
+                            <div>
+                              <p className="text-sm">
+                                {locale === "en"
+                                  ? "I am designed to help only make your booking faster. Do you want to book any service?"
+                                  : "أنا مصمم للمساعدة فقط في إجراء الحجز الخاص بك أسرع. هل تريد حجز أي خدمة؟"}
+                              </p>
+
+                              <div className="flex justify-center gap-2 mt-2">
+                                <button
+                                  className="bg-red-400 rounded px-2 py-1 text-white"
+                                  onClick={() => handleFinalQuestion("Yes")}
+                                >
+                                  {locale === "en" ? "Yes" : "نعم"}
+                                </button>
+                                <button
+                                  className="bg-red-400 rounded px-2 py-1 text-white"
+                                  onClick={() => handleFinalQuestion("No")}
+                                >
+                                  {locale === "en" ? "No" : "لا"}
+                                </button>
+                              </div>
+                            </div>
+                          ),
+                        },
+                      ]);
+                    }
+
+                    inputField.value = ""; // Clear input field
                   }
                 }}
               >
